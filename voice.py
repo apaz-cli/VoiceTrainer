@@ -2,7 +2,6 @@ import os
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
-from datetime import datetime
 
 # Configuration
 SAMPLE_RATE = 44100  # Audio sample rate
@@ -28,18 +27,12 @@ def record_noise_profile():
 def load_noise_profile():
     """Load existing noise profile."""
     if os.path.exists(NOISE_PROFILE_PATH):
-        print("Loading existing noise profile...")
         noise, _ = sf.read(NOISE_PROFILE_PATH)
         return noise.flatten()
     return None
 
 def record_until_stop():
     """Record audio until Enter is pressed or Ctrl+C."""
-    print("\nVoice Recording")
-    print("===============")
-    print("1. Speak clearly into your microphone")
-    print("2. Press Enter to stop recording")
-    print("   or press Ctrl+C to cancel")
 
     recorded_frames = []  # Renamed to avoid conflict
 
@@ -49,7 +42,7 @@ def record_until_stop():
 
     try:
         with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback):
-            input("\nRecording started...\nPress Enter to stop ")
+            input("Recording started. Press Enter to stop, or ^C to cancel. ")
     except KeyboardInterrupt:
         print("\nRecording cancelled")
         return None
@@ -63,10 +56,11 @@ def record_until_stop():
 def play_audio(audio, samplerate):
     """Play audio with a larger buffer size to avoid underruns."""
     try:
-        # Use a larger buffer size to prevent underruns
-        blocksize = 2048  # Increase buffer size
-        sd.play(audio, samplerate, blocksize=blocksize)
-        sd.wait()
+        import contextlib
+        with open(os.devnull, 'w') as devnull:
+            with contextlib.redirect_stdout(devnull):
+                sd.play(audio, samplerate, blocksize=4096)
+                sd.wait()
     except Exception as e:
         print(f"Error during playback: {e}")
 
@@ -93,6 +87,7 @@ def main():
     )
 
     # Save and playback
+    from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = os.path.join(OUTPUT_DIR, f"voice_sample_{timestamp}.wav")
     sf.write(filename, cleaned_audio.reshape(-1, 1), SAMPLE_RATE)
@@ -100,7 +95,6 @@ def main():
 
     print("Playing back...")
     play_audio(cleaned_audio, SAMPLE_RATE)
-    print("Playback complete")
 
 if __name__ == "__main__":
     main()
