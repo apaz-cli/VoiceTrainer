@@ -1,122 +1,106 @@
-import pyaudio
-import wave
-import numpy as np
-import noisereduce as nr
-from scipy.io import wavfile
 import os
+import sounddevice as sd
+import soundfile as sf
+import numpy as np
 from datetime import datetime
-import time
-from pathlib import Path
 
-class VoiceRecorder:
-    def __init__(self):
-        self.CHUNK = 1024
-        self.FORMAT = pyaudio.paFloat32
-        self.CHANNELS = 1
-        self.RATE = 44100
-        self.RECORD_SECONDS = 5  # Default recording duration
-        self.VOICE_DIR = Path.home() / "Voice"
-        
-        # Create Voice directory if it doesn't exist
-        self.VOICE_DIR.mkdir(exist_ok=True)
-        
-        self.p = pyaudio.PyAudio()
+# Configuration
+SAMPLE_RATE = 44100  # Audio sample rate
+CHANNELS = 1  # Number of audio channels
+OUTPUT_DIR = os.path.expanduser("~/Voice")  # Output directory
+NOISE_PROFILE_PATH = os.path.join(OUTPUT_DIR, ".noise_profile.wav")  # Hidden noise profile
 
-    def record(self):
-        """Record audio from microphone"""
-        print("* Recording...")
-        
-        stream = self.p.open(format=self.FORMAT,
-                           channels=self.CHANNELS,
-                           rate=self.RATE,
-                           input=True,
-                           frames_per_buffer=self.CHUNK)
-        
-        frames = []
-        
-        # Record initial noise profile (1 second)
-        print("* Recording noise profile...")
-        noise_frames = []
-        for _ in range(0, int(self.RATE / self.CHUNK)):
-            data = stream.read(self.CHUNK)
-            noise_frames.append(np.frombuffer(data, dtype=np.float32))
-        
-        noise_profile = np.concatenate(noise_frames)
-        print("* Noise profile captured")
-        
-        # Record actual audio
-        print("* Now recording your voice...")
-        for _ in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
-            data = stream.read(self.CHUNK)
-            frames.append(np.frombuffer(data, dtype=np.float32))
-        
-        print("* Done recording")
-        
-        stream.stop_stream()
-        stream.close()
-        
-        # Convert frames to numpy array
-        audio_data = np.concatenate(frames)
-        
-        # Apply noise reduction
-        reduced_noise = nr.reduce_noise(
-            y=audio_data,
-            sr=self.RATE,
-            y_noise=noise_profile,
-            prop_decrease=0.75
-        )
-        
-        return reduced_noise
+def record_noise_profile():
+    """Record and save a 2-second noise profile."""
+    print("\nNoise Profile Setup")
+    print("===================")
+    print("1. Ensure environment is quiet (no speaking)")
+    print("2. Will record 2 seconds of ambient noise")
+    input("Press Enter to start noise recording...")
 
-    def save_audio(self, audio_data):
-        """Save the recorded audio to a file"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = self.VOICE_DIR / f"recording_{timestamp}.wav"
-        
-        wavfile.write(filename, self.RATE, audio_data)
-        print(f"* Saved to {filename}")
-        return filename
+    print("Recording noise...")
+    noise = sd.rec(int(2 * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=CHANNELS)
+    sd.wait()
+    sf.write(NOISE_PROFILE_PATH, noise, SAMPLE_RATE)
+    print(f"Noise profile saved to: {NOISE_PROFILE_PATH}")
+    return noise.flatten()
 
-    def play_audio(self, filename):
-        """Play back the recorded audio"""
-        print("* Playing back recording...")
-        
-        # Open the saved file
-        wf = wave.open(str(filename), 'rb')
-        
-        stream = self.p.open(format=self.p.get_format_from_width(wf.getsampwidth()),
-                           channels=wf.getnchannels(),
-                           rate=wf.getframerate(),
-                           output=True)
-        
-        # Read data in chunks and play
-        data = wf.readframes(self.CHUNK)
-        while data:
-            stream.write(data)
-            data = wf.readframes(self.CHUNK)
-        
-        stream.stop_stream()
-        stream.close()
-        print("* Playback finished")
+def load_noise_profile():
+    """Load existing noise profile."""
+    if os.path.exists(NOISE_PROFILE_PATH):
+        print("Loading existing noise profile...")
+        noise, _ = sf.read(NOISE_PROFILE_PATH)
+        return noise.flatten()
+    return None
 
-    def cleanup(self):
-        """Clean up PyAudio"""
-        self.p.terminate()
+def record_until_stop():
+    """Record audio until Enter is pressed or Ctrl+C."""
+    print("\nVoice Recording")
+    print("===============")
+    print("1. Speak clearly into your microphone")
+    print("2. Press Enter to stop recording")
+    print("   or press Ctrl+C to cancel")
+
+    recorded_frames = []  # Renamed to avoid conflict
+
+    def callback(indata, frame_count, time, status):
+        """Callback function for audio input stream."""
+        recorded_frames.append(indata.copy())
+
+    try:
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, callback=callback):
+            input("\nRecording started...\nPress Enter to stop ")
+    except KeyboardInterrupt:
+        print("\nRecording cancelled")
+        return None
+
+    if not recorded_frames:
+        print("No audio recorded")
+        return None
+
+    return np.concatenate(recorded_frames, axis=0).flatten()
+
+def play_audio(audio, samplerate):
+    """Play audio with a larger buffer size to avoid underruns."""
+    try:
+        # Use a larger buffer size to prevent underruns
+        blocksize = 2048  # Increase buffer size
+        sd.play(audio, samplerate, blocksize=blocksize)
+        sd.wait()
+    except Exception as e:
+        print(f"Error during playback: {e}")
 
 def main():
-    recorder = VoiceRecorder()
-    
-    try:
-        while True:
-            input("Press Enter to start recording (Ctrl+C to exit)...")
-            audio_data = recorder.record()
-            filename = recorder.save_audio(audio_data)
-            time.sleep(0.5)  # Small delay before playback
-            recorder.play_audio(filename)
-    except KeyboardInterrupt:
-        print("\n* Recording session ended")
-    finally:
-        recorder.cleanup()
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Voice recording
+    raw_audio = record_until_stop()
+    if raw_audio is None:
+        return
+
+    # Noise profile handling
+    noise_clip = load_noise_profile()
+    if noise_clip is None:
+        noise_clip = record_noise_profile()
+
+    # Noise reduction
+    import noisereduce as nr
+    cleaned_audio = nr.reduce_noise(
+        y=raw_audio,
+        y_noise=noise_clip,
+        sr=SAMPLE_RATE,
+        stationary=False
+    )
+
+    # Save and playback
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = os.path.join(OUTPUT_DIR, f"voice_sample_{timestamp}.wav")
+    sf.write(filename, cleaned_audio.reshape(-1, 1), SAMPLE_RATE)
+    print(f"\nSaved cleaned audio to: {filename}")
+
+    print("Playing back...")
+    play_audio(cleaned_audio, SAMPLE_RATE)
+    print("Playback complete")
 
 if __name__ == "__main__":
     main()
