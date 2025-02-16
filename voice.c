@@ -210,8 +210,8 @@ char *get_voice_dir() {
 
 bool save_noise_profile(const char *voice_dir, float *noise_data,
                         size_t frames) {
-  char filepath[512];
-  snprintf(filepath, sizeof(filepath), "%s/noise_profile.dat", voice_dir);
+  char filepath[4096];
+  snprintf(filepath, sizeof(filepath), "%s/.noise_profile.dat", voice_dir);
 
   FILE *f = fopen(filepath, "wb");
   if (!f)
@@ -235,7 +235,7 @@ bool save_noise_profile(const char *voice_dir, float *noise_data,
 
 bool load_noise_profile(const char *voice_dir, float **noise_data,
                         size_t *frames) {
-  char filepath[512];
+  char filepath[4096];
   snprintf(filepath, sizeof(filepath), "%s/noise_profile.dat", voice_dir);
 
   FILE *f = fopen(filepath, "rb");
@@ -551,7 +551,7 @@ int main() {
   // Save recording with timestamp
   time_t now;
   time(&now);
-  char filename[512];
+  char filename[4096];
   strftime(filename, sizeof(filename), "/voice_sample_%Y%m%d-%H%M%S.wav",
            localtime(&now));
   char *full_path = malloc(strlen(voice_dir) + strlen(filename) + 1);
