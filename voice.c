@@ -162,35 +162,29 @@ static int recording_callback(const void *input, void *output,
   return should_stop ? paComplete : paContinue;
 }
 
+typedef struct {
+    size_t total_frames;
+    float *audio_data;
+    size_t position;
+} PlaybackData;
+
 static int playback_callback(const void *input, void *output,
                              unsigned long frameCount,
                              const PaStreamCallbackTimeInfo *timeInfo,
                              PaStreamCallbackFlags statusFlags,
                              void *userData) {
   float *out = (float *)output;
-  float *data = (float *)userData;
-  static size_t position = 0;
-  static size_t total_frames = 0;
-
-  // Get total frames from the first call
-  if (total_frames == 0) {
-    total_frames =
-        ((size_t *)userData)[0]; // Store total frames count at start of buffer
-    data =
-        &((float *)userData)[1]; // Actual audio data starts after frame count
-  }
+  PlaybackData *pb_data = (PlaybackData *)userData;
 
   for (unsigned long i = 0; i < frameCount; i++) {
-    if (position < total_frames) {
-      out[i] = data[position++];
+    if (pb_data->position < pb_data->total_frames) {
+      out[i] = pb_data->audio_data[pb_data->position++];
     } else {
       out[i] = 0.0f; // Pad with silence if we run out of data
     }
   }
 
-  if (position >= total_frames) {
-    position = 0; // Reset for next playback
-    total_frames = 0;
+  if (pb_data->position >= pb_data->total_frames) {
     return paComplete;
   }
 
@@ -291,17 +285,11 @@ void play_audio(float *data, size_t frames) {
     int stderr_fd = dup(STDERR_FILENO);
     freopen("/dev/null", "w", stderr);
 
-    // Allocate buffer with space for frame count and audio data
-    float *playback_data = malloc((frames + 1) * sizeof(float));
-    if (!playback_data) {
-        fprintf(stderr, "Failed to allocate playback buffer\n");
-        return;
-    }
-    
-    // Store frame count at start of buffer
-    ((size_t*)playback_data)[0] = frames;
-    // Copy audio data after frame count
-    memcpy(&playback_data[1], data, frames * sizeof(float));
+    PlaybackData pb_data = {
+        .total_frames = frames,
+        .audio_data = data,
+        .position = 0
+    };
     
     PaStream *playback_stream;
     PaError err;
@@ -321,11 +309,10 @@ void play_audio(float *data, size_t frames) {
                        FRAMES_PER_BUFFER,
                        paClipOff,
                        playback_callback,
-                       playback_data);
+                       &pb_data);
     
     if (err != paNoError) {
         fprintf(stderr, "Error opening playback stream: %s\n", Pa_GetErrorText(err));
-        free(playback_data);
         return;
     }
     
@@ -342,7 +329,6 @@ void play_audio(float *data, size_t frames) {
     }
     
     Pa_CloseStream(playback_stream);
-    free(playback_data);
 }
 
 float* capture_noise_profile(size_t *noise_frames) {
