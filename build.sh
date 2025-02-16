@@ -14,7 +14,7 @@ fi
 
 if [ ! -f voice ] || [ ! "$1" = "run" ]; then
     echo "Compiling..."
-    gcc voice.c -o voice $LIBS $CFLAGS $DEBUG_FLAGS
+    gcc voice.c -o voice $LIBS $CFLAGS #$DEBUG_FLAGS
 fi
 
 if [ "$1" = "run" ]; then

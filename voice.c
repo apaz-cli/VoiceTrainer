@@ -333,6 +333,7 @@ void play_audio(float *data, size_t frames) {
         Pa_Sleep(100);
     }
     
+    Pa_StopStream(playback_stream);
     Pa_CloseStream(playback_stream);
     free(pb_data);
 }
@@ -563,15 +564,13 @@ int main() {
   // Play back the cleaned audio
   play_audio(cleaned_audio, state.frames_count);
 
-  // Cleanup
-  free(full_path);
-  free(voice_dir);
-  free(cleaned_audio);
-  free(noise_data);
-  spectralgate_destroy(sg);
-
 cleanup:
   // Clean up resources
+  spectralgate_destroy(sg);
+  free(voice_dir);
+  free(full_path);
+  free(cleaned_audio);
+  free(noise_data);
   if (state.recorded_data)
     free(state.recorded_data);
   if (state.pitch_detector)
@@ -580,8 +579,6 @@ cleanup:
     del_fvec(state.input_buffer);
   if (state.pitch_output)
     del_fvec(state.pitch_output);
-  if (voice_dir)
-    free(voice_dir);
   Pa_Terminate();
   return 0;
 
