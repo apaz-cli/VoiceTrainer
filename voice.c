@@ -287,116 +287,125 @@ void save_recording(const char *filename, float *data, size_t frames) {
 }
 
 void play_audio(float *data, size_t frames) {
-  // Save and redirect stderr
-  int stderr_fd = dup(STDERR_FILENO);
-  freopen("/dev/null", "w", stderr);
+    // Save and redirect stderr
+    int stderr_fd = dup(STDERR_FILENO);
+    freopen("/dev/null", "w", stderr);
 
-  // Allocate buffer with space for frame count and audio data
-  float *playback_data = malloc((frames + 1) * sizeof(float));
-  if (!playback_data) {
-    fprintf(stderr, "Failed to allocate playback buffer\n");
-    return;
-  }
-
-  // Store frame count at start of buffer
-  ((size_t *)playback_data)[0] = frames;
-  // Copy audio data after frame count
-  memcpy(&playback_data[1], data, frames * sizeof(float));
-
-  PaStream *playback_stream;
-  PaError err;
-
-  PaStreamParameters outputParameters = {
-      .device = Pa_GetDefaultOutputDevice(),
-      .channelCount = CHANNELS,
-      .sampleFormat = paFloat32,
-      .suggestedLatency = Pa_GetDeviceInfo(Pa_GetDefaultOutputDevice())
-                              ->defaultLowOutputLatency,
-      .hostApiSpecificStreamInfo = NULL};
-
-  err = Pa_OpenStream(&playback_stream, NULL, &outputParameters, SAMPLE_RATE,
-                      FRAMES_PER_BUFFER, paClipOff, playback_callback,
-                      playback_data);
-
-  if (err != paNoError) {
-    fprintf(stderr, "Error opening playback stream: %s\n",
-            Pa_GetErrorText(err));
+    // Allocate buffer with space for frame count and audio data
+    float *playback_data = malloc((frames + 1) * sizeof(float));
+    if (!playback_data) {
+        fprintf(stderr, "Failed to allocate playback buffer\n");
+        return;
+    }
+    
+    // Store frame count at start of buffer
+    ((size_t*)playback_data)[0] = frames;
+    // Copy audio data after frame count
+    memcpy(&playback_data[1], data, frames * sizeof(float));
+    
+    PaStream *playback_stream;
+    PaError err;
+    
+    PaStreamParameters outputParameters = {
+        .device = Pa_GetDefaultOutputDevice(),
+        .channelCount = CHANNELS,
+        .sampleFormat = paFloat32,
+        .suggestedLatency = Pa_GetDeviceInfo(Pa_GetDefaultOutputDevice())->defaultLowOutputLatency,
+        .hostApiSpecificStreamInfo = NULL
+    };
+    
+    err = Pa_OpenStream(&playback_stream,
+                       NULL,
+                       &outputParameters,
+                       SAMPLE_RATE,
+                       FRAMES_PER_BUFFER,
+                       paClipOff,
+                       playback_callback,
+                       playback_data);
+    
+    if (err != paNoError) {
+        fprintf(stderr, "Error opening playback stream: %s\n", Pa_GetErrorText(err));
+        free(playback_data);
+        return;
+    }
+    
+    printf("Playing back recording...\n");
+    err = Pa_StartStream(playback_stream);
+    if (err != paNoError) {
+        fprintf(stderr, "Error starting playback: %s\n", Pa_GetErrorText(err));
+        free(playback_data);
+        return;
+    }
+    
+    while (Pa_IsStreamActive(playback_stream)) {
+        Pa_Sleep(100);
+    }
+    
+    Pa_CloseStream(playback_stream);
     free(playback_data);
-    return;
-  }
-
-  printf("Playing back recording...\n");
-  err = Pa_StartStream(playback_stream);
-  if (err != paNoError) {
-    fprintf(stderr, "Error starting playback: %s\n", Pa_GetErrorText(err));
-    free(playback_data);
-    return;
-  }
-
-  while (Pa_IsStreamActive(playback_stream)) {
-    Pa_Sleep(100);
-  }
-
-  Pa_CloseStream(playback_stream);
-  free(playback_data);
 }
 
-float *capture_noise_profile(size_t *noise_frames) {
-  PaStream *noise_stream;
-  NoiseState noise_state = {
-      .noise_data = malloc(SAMPLE_RATE * NOISE_SAMPLE_DURATION * sizeof(float)),
-      .frames_count = 0,
-      .max_frames = SAMPLE_RATE * NOISE_SAMPLE_DURATION};
-
-  if (!noise_state.noise_data) {
-    fprintf(stderr, "Failed to allocate noise buffer\n");
-    return NULL;
-  }
-
-  PaStreamParameters inputParameters = {
-      .device = Pa_GetDefaultInputDevice(),
-      .channelCount = CHANNELS,
-      .sampleFormat = paFloat32,
-      .suggestedLatency =
-          Pa_GetDeviceInfo(Pa_GetDefaultInputDevice())->defaultLowInputLatency,
-      .hostApiSpecificStreamInfo = NULL};
-
-  PaError err =
-      Pa_OpenStream(&noise_stream, &inputParameters, NULL, SAMPLE_RATE,
-                    FRAMES_PER_BUFFER, paClipOff, noise_callback, &noise_state);
-
-  if (err != paNoError) {
-    fprintf(stderr, "Error opening noise capture stream: %s\n",
-            Pa_GetErrorText(err));
-    free(noise_state.noise_data);
-    return NULL;
-  }
-
-  printf("Please be quiet for %.1f seconds to capture noise profile...\n",
-         NOISE_SAMPLE_DURATION);
-  err = Pa_StartStream(noise_stream);
-  if (err != paNoError) {
-    fprintf(stderr, "Error starting noise capture: %s\n", Pa_GetErrorText(err));
-    free(noise_state.noise_data);
+float* capture_noise_profile(size_t *noise_frames) {
+    PaStream *noise_stream;
+    NoiseState noise_state = {
+        .noise_data = malloc(SAMPLE_RATE * NOISE_SAMPLE_DURATION * sizeof(float)),
+        .frames_count = 0,
+        .max_frames = SAMPLE_RATE * NOISE_SAMPLE_DURATION
+    };
+    
+    if (!noise_state.noise_data) {
+        fprintf(stderr, "Failed to allocate noise buffer\n");
+        return NULL;
+    }
+    
+    PaStreamParameters inputParameters = {
+        .device = Pa_GetDefaultInputDevice(),
+        .channelCount = CHANNELS,
+        .sampleFormat = paFloat32,
+        .suggestedLatency = Pa_GetDeviceInfo(Pa_GetDefaultInputDevice())->defaultLowInputLatency,
+        .hostApiSpecificStreamInfo = NULL
+    };
+    
+    PaError err = Pa_OpenStream(&noise_stream,
+                               &inputParameters,
+                               NULL,
+                               SAMPLE_RATE,
+                               FRAMES_PER_BUFFER,
+                               paClipOff,
+                               noise_callback,
+                               &noise_state);
+    
+    if (err != paNoError) {
+        fprintf(stderr, "Error opening noise capture stream: %s\n", Pa_GetErrorText(err));
+        free(noise_state.noise_data);
+        return NULL;
+    }
+    
+    printf("Please be quiet for %.1f seconds to capture noise profile...\n", NOISE_SAMPLE_DURATION);
+    err = Pa_StartStream(noise_stream);
+    if (err != paNoError) {
+        fprintf(stderr, "Error starting noise capture: %s\n", Pa_GetErrorText(err));
+        free(noise_state.noise_data);
+        Pa_CloseStream(noise_stream);
+        return NULL;
+    }
+    
+    // Wait for the full duration plus a small buffer
+    Pa_Sleep((int)(NOISE_SAMPLE_DURATION * 1000) + 100);
+    
+    Pa_StopStream(noise_stream);
     Pa_CloseStream(noise_stream);
-    return NULL;
-  }
-
-  while (Pa_IsStreamActive(noise_stream)) {
-    Pa_Sleep(100);
-  }
-
-  Pa_StopStream(noise_stream);
-  Pa_CloseStream(noise_stream);
-
-  if (noise_state.frames_count < noise_state.max_frames) {
-    fprintf(stderr, "Incomplete noise capture\n");
-    free(noise_state.noise_data);
-    return NULL;
-  }
-
-  *noise_frames = noise_state.frames_count;
-  return noise_state.noise_data;
+    
+    // Check if we got enough frames
+    if (noise_state.frames_count < (SAMPLE_RATE * NOISE_SAMPLE_DURATION * 0.9)) {  // Allow for small variations
+        fprintf(stderr, "Incomplete noise capture (got %zu frames, expected %zu)\n", 
+                noise_state.frames_count, (size_t)(SAMPLE_RATE * NOISE_SAMPLE_DURATION));
+        free(noise_state.noise_data);
+        return NULL;
+    }
+    
+    *noise_frames = noise_state.frames_count;
+    return noise_state.noise_data;
 }
 
 int main() {
