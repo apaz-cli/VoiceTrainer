@@ -285,11 +285,15 @@ void play_audio(float *data, size_t frames) {
     int stderr_fd = dup(STDERR_FILENO);
     freopen("/dev/null", "w", stderr);
 
-    PlaybackData pb_data = {
-        .total_frames = frames,
-        .audio_data = data,
-        .position = 0
-    };
+    PlaybackData *pb_data = malloc(sizeof(PlaybackData));
+    if (!pb_data) {
+        fprintf(stderr, "Failed to allocate playback data\n");
+        return;
+    }
+    
+    pb_data->total_frames = frames;
+    pb_data->audio_data = data;
+    pb_data->position = 0;
     
     PaStream *playback_stream;
     PaError err;
@@ -309,10 +313,11 @@ void play_audio(float *data, size_t frames) {
                        FRAMES_PER_BUFFER,
                        paClipOff,
                        playback_callback,
-                       &pb_data);
+                       pb_data);
     
     if (err != paNoError) {
         fprintf(stderr, "Error opening playback stream: %s\n", Pa_GetErrorText(err));
+        free(pb_data);
         return;
     }
     
@@ -320,6 +325,7 @@ void play_audio(float *data, size_t frames) {
     err = Pa_StartStream(playback_stream);
     if (err != paNoError) {
         fprintf(stderr, "Error starting playback: %s\n", Pa_GetErrorText(err));
+        free(pb_data);
         return;
     }
     
@@ -328,6 +334,7 @@ void play_audio(float *data, size_t frames) {
     }
     
     Pa_CloseStream(playback_stream);
+    free(pb_data);
 }
 
 float* capture_noise_profile(size_t *noise_frames) {
