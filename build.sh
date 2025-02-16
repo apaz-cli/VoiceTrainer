@@ -1,7 +1,8 @@
 #!/bin/sh
 
 PACKAGES="libportaudio2 libportaudiocpp0 libaubio-dev libsndfile1-dev libfftw3-dev"
-CFLAGS="-O3 -march=native -fsanitize=address -g -fsanitize=undefined -fno-omit-frame-pointer"
+CFLAGS="-O3 -march=native"
+DEBUG_FLAGS="-fsanitize=address -g -fsanitize=undefined -fno-omit-frame-pointer"
 LIBS="-lportaudio -laubio -lsndfile -lfftw3f -lm"
 
 
