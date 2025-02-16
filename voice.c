@@ -320,7 +320,6 @@ void play_audio(float *data, size_t frames) {
     err = Pa_StartStream(playback_stream);
     if (err != paNoError) {
         fprintf(stderr, "Error starting playback: %s\n", Pa_GetErrorText(err));
-        free(playback_data);
         return;
     }
     
