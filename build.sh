@@ -23,7 +23,7 @@ elif command -v apt >/dev/null 2>&1; then
     fi
 else
     echo "Unsupported package manager. Please install dependencies manually:"
-    echo "Required: portaudio, aubio, libsndfile, fftw"
+    echo "Required: $LIBS"
     exit 1
 fi
 
