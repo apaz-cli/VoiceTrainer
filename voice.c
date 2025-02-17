@@ -236,7 +236,7 @@ bool save_noise_profile(const char *voice_dir, float *noise_data,
 bool load_noise_profile(const char *voice_dir, float **noise_data,
                         size_t *frames) {
   char filepath[4096];
-  snprintf(filepath, sizeof(filepath), "%s/noise_profile.dat", voice_dir);
+  snprintf(filepath, sizeof(filepath), "%s/.noise_profile.dat", voice_dir);
 
   FILE *f = fopen(filepath, "rb");
   if (!f)
@@ -537,6 +537,9 @@ int main() {
     fprintf(stderr, "Failed to create spectral gate\n");
     goto cleanup;
   }
+  sg->prop_decrease = 0.0;
+  sg->n_std_thresh = 2.5;
+
   spectralgate_compute_noise_thresh(sg, noise_data, noise_frames);
   spectralgate_process(sg, state.recorded_data, cleaned_audio,
                        final_frames);
@@ -551,11 +554,11 @@ int main() {
   sprintf(full_path, "%s%s", voice_dir, filename);
 
   // Save the file
-  save_recording(full_path, cleaned_audio, state.frames_count);
+  save_recording(full_path, cleaned_audio, final_frames);
   printf("\nSaved cleaned audio to: %s\n", full_path);
 
   // Play back the cleaned audio
-  play_audio(cleaned_audio, state.frames_count);
+  play_audio(cleaned_audio, final_frames);
 
 cleanup:
   // Clean up resources
