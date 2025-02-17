@@ -11,8 +11,8 @@
 #define DEFAULT_N_FFT 1024
 #define DEFAULT_HOP_LENGTH 256
 #define DEFAULT_WIN_LENGTH 1024
-#define DEFAULT_N_STD_THRESH 1.5f
-#define DEFAULT_PROP_DECREASE 1.0f
+#define DEFAULT_N_STD_THRESH 2.5f
+#define DEFAULT_PROP_DECREASE 0.0f
 
 typedef struct {
     int n_fft;
