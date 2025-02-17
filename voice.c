@@ -67,7 +67,7 @@ void handle_sigint(int signum) {
 }
 
 void draw_pitch_bar(float avg_pitch) {
-  int bar_length = (int)(40.0f * (avg_pitch) / 400.0f);
+  int bar_length = (int)(40.0f * (avg_pitch) / 300.0f);
   if (bar_length < 0)
     bar_length = 0;
   if (bar_length > 40)
