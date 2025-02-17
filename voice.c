@@ -519,14 +519,19 @@ int main() {
   Pa_CloseStream(recording_stream);
   printf("\033[?25h"); // Show cursor
 
-  // Apply noise reduction
-  float *cleaned_audio = malloc(state.frames_count * sizeof(float));
+  // Trim last 30ms and apply noise reduction
+  size_t trim_samples = (SAMPLE_RATE * 30) / 1000; // 30ms worth of samples
+  size_t final_frames = state.frames_count > trim_samples ? 
+                       state.frames_count - trim_samples : 
+                       state.frames_count;
+
+  float *cleaned_audio = malloc(final_frames * sizeof(float));
   if (!cleaned_audio) {
     fprintf(stderr, "Failed to allocate memory for cleaned audio\n");
     goto cleanup;
   }
 
-  // Compute noise threshold and process the recorded audio
+  // Compute noise threshold and process the trimmed audio
   SpectralGate *sg = spectralgate_create(SAMPLE_RATE);
   if (!sg) {
     fprintf(stderr, "Failed to create spectral gate\n");
@@ -534,7 +539,7 @@ int main() {
   }
   spectralgate_compute_noise_thresh(sg, noise_data, noise_frames);
   spectralgate_process(sg, state.recorded_data, cleaned_audio,
-                       state.frames_count);
+                       final_frames);
 
   // Save recording with timestamp
   time_t now;
