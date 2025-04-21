@@ -67,16 +67,18 @@ void handle_sigint(int signum) {
 }
 
 void draw_pitch_bar(float avg_pitch) {
-  int bar_length = (int)(40.0f * (avg_pitch) / 300.0f);
+  float max_pitch = 300.0f;
+  int full_bar_len = 40;
+  int bar_length = (int)((float)full_bar_len * (avg_pitch / max_pitch));
   if (bar_length < 0)
     bar_length = 0;
-  if (bar_length > 40)
-    bar_length = 40;
+  if (bar_length > full_bar_len)
+    bar_length = full_bar_len;
 
   printf("\r");
   for (int i = 0; i < bar_length; i++)
     printf("█");
-  for (int i = bar_length; i < 40; i++)
+  for (int i = bar_length; i < full_bar_len; i++)
     printf("▒");
   printf(" %.1f Hz\033[K", avg_pitch);
   fflush(stdout);
