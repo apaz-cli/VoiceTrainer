@@ -1,7 +1,6 @@
 #include <aubio/aubio.h>
 #include <fcntl.h>
 #include <portaudio.h>
-#include <pwd.h>
 #include <signal.h>
 #include <sndfile.h>
 #include <stdbool.h>
@@ -12,11 +11,8 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
-// Include the spectral gate header
+#include "argparse.h"
 #include "spectralgate.h"
 
 #define SAMPLE_RATE 44100
@@ -51,17 +47,10 @@ static volatile bool should_stop = false;
 
 void handle_sigint(int signum) {
   printf("\033[?25h\n");
-#ifdef _WIN32
-  HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-  DWORD mode;
-  GetConsoleMode(hStdin, &mode);
-  SetConsoleMode(hStdin, mode);
-#else
   struct termios term;
   tcgetattr(STDIN_FILENO, &term);
   term.c_lflag |= ICANON | ECHO;
   tcsetattr(STDIN_FILENO, TCSANOW, &term);
-#endif
   printf("\nRecording cancelled\n");
   exit(1);
 }
@@ -191,23 +180,6 @@ static int playback_callback(const void *input, void *output,
   }
 
   return paContinue;
-}
-
-char *get_voice_dir() {
-  const char *home_dir;
-#ifdef _WIN32
-  home_dir = getenv("USERPROFILE");
-#else
-  home_dir = getenv("HOME");
-  if (!home_dir) {
-    struct passwd *pw = getpwuid(getuid());
-    home_dir = pw->pw_dir;
-  }
-#endif
-
-  char *voice_dir = malloc(strlen(home_dir) + 7);
-  sprintf(voice_dir, "%s/Voice", home_dir);
-  return voice_dir;
 }
 
 bool save_noise_profile(const char *voice_dir, float *noise_data,
@@ -396,13 +368,10 @@ float *capture_noise_profile(size_t *noise_frames) {
   return noise_state.noise_data;
 }
 
-int main() {
-  char *voice_dir = get_voice_dir();
-#ifdef _WIN32
-  _mkdir(voice_dir);
-#else
-  mkdir(voice_dir, 0755);
-#endif
+int main(int argc, char **argv) {
+  VoiceTrainerArgs args = voicetrainer_argparse(argc, argv);
+
+  mkdir(args.voice_dir, 0755);
 
   int stderr_fd = dup(STDERR_FILENO); // Save original stderr
   freopen("/dev/null", "w", stderr);  // Redirect stderr to /dev/null
@@ -418,10 +387,10 @@ int main() {
   // First, try to load existing noise profile
   float *noise_data = NULL;
   size_t noise_frames = 0;
-  bool load_success = load_noise_profile(voice_dir, &noise_data, &noise_frames);
+  bool load_success =
+      load_noise_profile(args.voice_dir, &noise_data, &noise_frames);
 
   // If no existing profile, capture a new one
-
   if (!load_success) {
     printf("No existing noise profile found. Need to capture one.\n");
     noise_data = capture_noise_profile(&noise_frames);
@@ -431,7 +400,7 @@ int main() {
     }
 
     // Save the new noise profile
-    if (!save_noise_profile(voice_dir, noise_data, noise_frames)) {
+    if (!save_noise_profile(args.voice_dir, noise_data, noise_frames)) {
       fprintf(stderr, "Warning: Failed to save noise profile for future use\n");
     }
   }
@@ -482,12 +451,6 @@ int main() {
   if (err != paNoError)
     goto error;
 
-#ifdef _WIN32
-  HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-  DWORD mode;
-  GetConsoleMode(hStdin, &mode);
-  SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT & ~ENABLE_LINE_INPUT);
-#else
   struct termios old_term, new_term;
   tcgetattr(STDIN_FILENO, &old_term);
   new_term = old_term;
@@ -495,7 +458,6 @@ int main() {
   tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
   int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
   fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-#endif
 
   fflush(stdout);
 
@@ -510,12 +472,8 @@ int main() {
     Pa_Sleep(10);
   }
 
-#ifdef _WIN32
-  SetConsoleMode(hStdin, mode);
-#else
   tcsetattr(STDIN_FILENO, TCSANOW, &old_term);
   fcntl(STDIN_FILENO, F_SETFL, flags);
-#endif
 
   Pa_StopStream(recording_stream);
   Pa_CloseStream(recording_stream);
@@ -523,9 +481,9 @@ int main() {
 
   // Trim last 30ms and apply noise reduction
   size_t trim_samples = (SAMPLE_RATE * 30) / 1000; // 30ms worth of samples
-  size_t final_frames = state.frames_count > trim_samples ? 
-                       state.frames_count - trim_samples : 
-                       state.frames_count;
+  size_t final_frames = state.frames_count > trim_samples
+                            ? state.frames_count - trim_samples
+                            : state.frames_count;
 
   float *cleaned_audio = malloc(final_frames * sizeof(float));
   if (!cleaned_audio) {
@@ -543,30 +501,22 @@ int main() {
   sg->n_std_thresh = 2.5;
 
   spectralgate_compute_noise_thresh(sg, noise_data, noise_frames);
-  spectralgate_process(sg, state.recorded_data, cleaned_audio,
-                       final_frames);
-
-  // Save recording with timestamp
-  time_t now;
-  time(&now);
-  char filename[4096];
-  strftime(filename, sizeof(filename), "/voice_sample_%Y%m%d-%H%M%S.wav",
-           localtime(&now));
-  char *full_path = malloc(strlen(voice_dir) + strlen(filename) + 1);
-  sprintf(full_path, "%s%s", voice_dir, filename);
+  spectralgate_process(sg, state.recorded_data, cleaned_audio, final_frames);
 
   // Save the file
-  save_recording(full_path, cleaned_audio, final_frames);
-  printf("\nSaved cleaned audio to: %s\n", full_path);
+  save_recording(args.output_file, cleaned_audio, final_frames);
+  printf("\nSaved cleaned audio to: %s\n", args.output_file);
 
   // Play back the cleaned audio
-  play_audio(cleaned_audio, final_frames);
+  if (!args.no_playback) {
+    play_audio(cleaned_audio, final_frames);
+  }
 
 cleanup:
   // Clean up resources
   spectralgate_destroy(sg);
-  free(voice_dir);
-  free(full_path);
+  free(args.voice_dir);
+  free(args.output_file);
   free(cleaned_audio);
   free(noise_data);
   if (state.recorded_data)
