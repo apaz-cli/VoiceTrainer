@@ -503,6 +503,11 @@ int main(int argc, char **argv) {
   spectralgate_compute_noise_thresh(sg, noise_data, noise_frames);
   spectralgate_process(sg, state.recorded_data, cleaned_audio, final_frames);
 
+  // Apply gain (amplification)
+  for (size_t i = 0; i < final_frames; i++) {
+    cleaned_audio[i] *= args.gain;
+  }
+
   // Save the file
   save_recording(args.output_file, cleaned_audio, final_frames);
   printf("\nSaved cleaned audio to: %s\n", args.output_file);

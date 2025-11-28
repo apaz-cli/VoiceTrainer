@@ -27,9 +27,11 @@ else
     exit 1
 fi
 
-if [ ! -f voice ] || [ ! "$1" = "run" ]; then
-    echo "Compiling..."
+if [ ! -f voice ]; then
+    echo "gcc voice.c -o voice $LIBS $CFLAGS"
     gcc voice.c -o voice $LIBS $CFLAGS #$DEBUG_FLAGS
+else
+    echo "Binary exists, skipping build."
 fi
 
 if [ "$1" = "run" ]; then

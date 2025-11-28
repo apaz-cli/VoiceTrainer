@@ -12,6 +12,7 @@
 typedef struct {
   char *output_file;    // Output file path (may be NULL for default)
   char *voice_dir;      // Directory for voice files
+  float gain;                // Amplification factor (default 2.0)
   bool no_playback : 1;      // Disable playback after recording
   bool help : 1;             // Show help message
 } VoiceTrainerArgs;
@@ -75,6 +76,7 @@ static inline char *get_save_path(char *output_file, char *voice_dir) {
 
 static inline VoiceTrainerArgs voicetrainer_argparse(int argc, char **argv) {
   VoiceTrainerArgs args = {0};
+  args.gain = 2.0f; // Default gain is 2x
 
   // Second pass: parse other arguments
   for (int i = 1; i < argc; i++) {
@@ -88,6 +90,17 @@ static inline VoiceTrainerArgs voicetrainer_argparse(int argc, char **argv) {
       }
     } else if (!strcmp(arg, "-n") || !strcmp(arg, "--no-playback")) {
       args.no_playback = 1;
+    } else if (!strcmp(arg, "-g") || !strcmp(arg, "--gain")) {
+      if (i + 1 < argc) {
+        args.gain = atof(argv[++i]);
+        if (args.gain < 0.0f) {
+          fprintf(stderr, "Error: gain must be non-negative\n");
+          exit(1);
+        }
+      } else {
+        fprintf(stderr, "Error: -g requires a gain value\n");
+        exit(1);
+      }
     } else if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
       args.help = 1;
     } else if (arg[0] == '-') {
@@ -104,17 +117,17 @@ static inline VoiceTrainerArgs voicetrainer_argparse(int argc, char **argv) {
     }
   }
 
-  char helpmsg[] =
-      "Voice Recorder with Playback\n\n"
-      "Usage: voicetrainer [OPTIONS] [OUTPUT_FILE]\n\n"
-      "Options:\n"
-      "  -o, --output FILE    Specify output filename (default: timestamped in ~/Voice)\n"
-      "  -n, --no-playback    Disable playback after recording\n"
-      "  -h, --help           Show this help message and exit\n\n"
-      "If OUTPUT_FILE can be specified positionally, or with the flag, or not at all.\n"
-      "If OUTPUT_FILE doesn't end with .wav, it will be appended.\n";
-
   if (args.help) {
+    char helpmsg[] =
+        "Voice Recorder with Playback\n\n"
+        "Usage: voicetrainer [OPTIONS] [OUTPUT_FILE]\n\n"
+        "Options:\n"
+        "  -o, --output FILE    Specify output filename (default: timestamped in ~/Voice)\n"
+        "  -g, --gain FACTOR    Audio amplification factor (default: 2.0)\n"
+        "  -n, --no-playback    Disable playback after recording\n"
+        "  -h, --help           Show this help message and exit\n\n"
+        "OUTPUT_FILE can be specified positionally, or with the flag, or not at all.\n"
+        "If OUTPUT_FILE doesn't end with .wav, it will be appended.\n";
     puts(helpmsg);
     exit(0);
   }
